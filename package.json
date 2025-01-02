@@ -1,0 +1,14 @@
+{
+  "name": "node-tester",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/jotalanusse/node-tester.git",
+  "author": "Jota Lanusse <jotalanusse@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@klyra/core": "^3.0.3"
+  }
+}
