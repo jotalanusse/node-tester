@@ -1,4 +1,4 @@
-export const UUIDS: string[] = [
+export const uuidConfigs: string[] = [
   'd8bc3fc6-c97f-4b02-b23b-13748416e01b',
   '4a0718a0-b2f2-4cb6-875e-9fd2b780c90f',
   '7d7dd3d1-ac69-495f-8ee7-c2cabf66ea82',

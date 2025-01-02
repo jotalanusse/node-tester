@@ -3,29 +3,27 @@ import {
   OrderSide,
   OrderTimeInForce,
   OrderType,
-  TxResponsePromise,
+  Klyra,
+  WalletSubaccountInfo,
 } from '@klyra/core';
-import { Klyra, WalletSubaccountInfo } from '@klyra/core';
-import { UUIDS } from './uuids';
+
+// Interfaces
+import { NodeConfig } from './interfaces/node-config.interface';
+
+// Classes
 import { Account } from './account';
 import { Node } from './node';
 import { Semaphore } from './semaphore';
 
-interface ValidatorAccountConfig {
-  name: string;
-  mnemonic: string;
-}
+// Config
+import { validatorAccountConfigs } from './config/validator-accounts.config';
+import { nodeConfigs } from './config/nodes.config';
+import { uuidConfigs } from './config/uuids.config';
 
-interface NodeConfig {
-  ip: string;
-}
-
-const GENERATED_ACCOUNTS = 4;
-// const TOTAL_TRANSFERS = 100000;
-// const MINIMUM_FUNDS = 1000;
-// const TRANSFER_AMOUNT = 100000;
-
-// let CURRENT_BLOCK = 0;
+// Constants
+const GENERATED_ACCOUNTS = 10;
+const MAX_CONCURRENT_TRANSACTIONS = 100;
+const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
 
 const KLYRA_CLIENT_OPTIONS = {
   environment: {
@@ -48,47 +46,11 @@ const KLYRA_CLIENT_OPTIONS = {
   },
 };
 
-const validatorAccountConfigs: ValidatorAccountConfig[] = [
-  {
-    name: 'alice',
-    mnemonic:
-      'merge panther lobster crazy road hollow amused security before critic about cliff exhibit cause coyote talent happy where lion river tobacco option coconut small',
-  },
-  {
-    name: 'bob',
-    mnemonic:
-      'color habit donor nurse dinosaur stable wonder process post perfect raven gold census inside worth inquiry mammal panic olive toss shadow strong name drum',
-  },
-  {
-    name: 'carl',
-    mnemonic:
-      'school artefact ghost shop exchange slender letter debris dose window alarm hurt whale tiger find found island what engine ketchup globe obtain glory manage',
-  },
-  {
-    name: 'dave',
-    mnemonic:
-      'switch boring kiss cash lizard coconut romance hurry sniff bus accident zone chest height merit elevator furnace eagle fetch quit toward steak mystery nest',
-  },
-];
-
-const nodeConfigs: NodeConfig[] = [
-  {
-    ip: '52.67.127.42',
-  },
-  {
-    ip: '18.230.122.234',
-  },
-  {
-    ip: '18.230.82.255',
-  },
-  {
-    ip: '54.233.47.16',
-  },
-];
-
+// State
 const accounts: Account[] = [];
 const nodes: Node[] = [];
 
+// Functions
 const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
   const klyraClient = new Klyra({
     ...KLYRA_CLIENT_OPTIONS,
@@ -119,30 +81,6 @@ const getRandomAccount = (): Account => {
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// const transferTDai = async (
-//   klyraClient: Klyra,
-//   accountA: Account,
-//   accountB: Account,
-//   amount: string,
-// ) => {
-//   const subaccount = new WalletSubaccountInfo(accountA.wallet!, 0);
-
-//   const transaction = await klyraClient.transfer(
-//     subaccount,
-//     accountB.address,
-//     0,
-//     amount,
-//   );
-
-//   // TODO: research what is going on with this
-//   // const test = await klyraClient.getChainClient().nodeClient.post.sendNativeToken(
-//   //   subaccount,
-//   //   accountB.address,
-//   //   'utdai',
-//   //   '10000000',
-//   // );
-// };
 
 const main = async () => {
   // Setup nodes
@@ -179,7 +117,7 @@ const main = async () => {
     const node = getRandomNode()!;
     const klyraClient = node.klyraClient!;
 
-    const uuid = UUIDS[i]!;
+    const uuid = uuidConfigs[i]!;
 
     const account = await Account.fromUUID(klyraClient, uuid);
     await account.updateTDaiBalanceFromNode(klyraClient);
@@ -190,14 +128,13 @@ const main = async () => {
     );
   }
 
-  const semaphore = new Semaphore(100);
-
+  // TODO: This is just a test function to send trasnactions
   const executeOrder = async () => {
     const node = getRandomNode()!;
     const klyraClient = node.klyraClient!;
-
+    
     const subaccount = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
-
+    
     try {
       const transaction = await klyraClient.placeCustomOrder({
         subaccount: subaccount,
@@ -208,10 +145,10 @@ const main = async () => {
         size: 1,
         clientId: randomIntFromInterval(0, 100000000),
         timeInForce: OrderTimeInForce.GTT,
-        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365,
+        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365, // TODO: ???
         execution: OrderExecution.DEFAULT,
       });
-
+      
       const parsedHash = Buffer.from(transaction.hash).toString('hex');
       console.log(`Transaction sent with hash [${parsedHash}]`);
     } catch (error) {
@@ -219,6 +156,8 @@ const main = async () => {
       console.error(error);
     }
   };
+  
+  const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
 
   while (true) {
     if (semaphore.getAvailablePermits() > 0) {
@@ -229,7 +168,7 @@ const main = async () => {
       });
     }
 
-    await delay(1); // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
+    await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
   }
 };
 
