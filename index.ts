@@ -9,6 +9,7 @@ import { Klyra, WalletSubaccountInfo } from '@klyra/core';
 import { UUIDS } from './uuids';
 import { Account } from './account';
 import { Node } from './node';
+import { Semaphore } from './semaphore';
 
 interface ValidatorAccountConfig {
   name: string;
@@ -117,6 +118,8 @@ const getRandomAccount = (): Account => {
   return accounts[index]!;
 };
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // const transferTDai = async (
 //   klyraClient: Klyra,
 //   accountA: Account,
@@ -187,18 +190,17 @@ const main = async () => {
     );
   }
 
-  // TODO: This section is for testing and it is not well implemented
-  // TODO: A more parallelized approach should be implemented to reach maximum throughput
-  while (true) {
-    const transactions: TxResponsePromise[] = [];
+  const semaphore = new Semaphore(100);
 
-    for (let i = 0; i < 10; i++) {
-      const node = getRandomNode()!;
-      const klyraClient = node.klyraClient!;
+  const executeOrder = async () => {
+    const node = getRandomNode()!;
+    const klyraClient = node.klyraClient!;
 
-      const subaccountA = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
-      const transactionA = klyraClient.placeCustomOrder({
-        subaccount: subaccountA,
+    const subaccount = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
+
+    try {
+      const transaction = await klyraClient.placeCustomOrder({
+        subaccount: subaccount,
         ticker: 'BTC-USD',
         type: OrderType.MARKET,
         side: OrderSide.SELL,
@@ -206,38 +208,28 @@ const main = async () => {
         size: 1,
         clientId: randomIntFromInterval(0, 100000000),
         timeInForce: OrderTimeInForce.GTT,
-        goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365,
+        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365,
         execution: OrderExecution.DEFAULT,
       });
 
-      // const subaccountB = new WalletSubaccountInfo(accounts[1]!.wallet, 0);
-      // const transactionB = klyraClient.placeCustomOrder({
-      //   subaccount: subaccountB,
-      //   ticker: 'BTC-USD',
-      //   type: OrderType.MARKET,
-      //   side: OrderSide.BUY,
-      //   price: 100000,
-      //   size: 1,
-      //   clientId: randomIntFromInterval(0, 100000000),
-      //   timeInForce: OrderTimeInForce.GTT,
-      //   goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365,
-      //   execution: OrderExecution.DEFAULT,
-      // });
-
-      transactions.push(transactionA);
-      // transactions.push(transactionB);
-    }
-
-    const resolvedTransactions = await Promise.all(transactions);
-    for (const transaction of resolvedTransactions) {
       const parsedHash = Buffer.from(transaction.hash).toString('hex');
-      console.log(`Transaction created with hash [${parsedHash}]`);
-
-      // const node = getRandomNode()!;
-      // const klyraClient = node.klyraClient!;
-      // const test = await klyraClient.getChainClient().nodeClient.get.getAccountBalances(accounts[0]!.address);
-      // console.log(test);
+      console.log(`Transaction sent with hash [${parsedHash}]`);
+    } catch (error) {
+      console.error('Error while creating transaction!');
+      console.error(error);
     }
+  };
+
+  while (true) {
+    if (semaphore.getAvailablePermits() > 0) {
+      semaphore.acquire();
+
+      executeOrder().then(() => {
+        semaphore.release();
+      });
+    }
+
+    await delay(1); // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
   }
 };
 
