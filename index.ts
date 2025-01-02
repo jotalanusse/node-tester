@@ -26,7 +26,7 @@ const GENERATED_ACCOUNTS = 4;
 
 // let CURRENT_BLOCK = 0;
 
-const KLYRA_OPTIONS = {
+const KLYRA_CLIENT_OPTIONS = {
   environment: {
     chainId: 'klyra-testnet',
     node: {
@@ -90,11 +90,11 @@ const nodes: Node[] = [];
 
 const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
   const klyraClient = new Klyra({
-    ...KLYRA_OPTIONS,
+    ...KLYRA_CLIENT_OPTIONS,
     environment: {
-      ...KLYRA_OPTIONS.environment,
+      ...KLYRA_CLIENT_OPTIONS.environment,
       node: {
-        ...KLYRA_OPTIONS.environment.node,
+        ...KLYRA_CLIENT_OPTIONS.environment.node,
         rpc: `http://${nodeConfig.ip}:26657`,
       },
     },
