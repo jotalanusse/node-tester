@@ -58,7 +58,7 @@ const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
       ...KLYRA_CLIENT_OPTIONS.environment,
       node: {
         ...KLYRA_CLIENT_OPTIONS.environment.node,
-        rpc: `http://${nodeConfig.ip}:26657`,
+        rpc: `http://${nodeConfig.ip}:${nodeConfig.port}`,
       },
     },
   });
@@ -132,12 +132,13 @@ const main = async () => {
   const executeOrder = async () => {
     const node = getRandomNode()!;
     const klyraClient = node.klyraClient!;
-    
-    const subaccount = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
-    
+
+    const subaccountA = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
+    const subaccountB = new WalletSubaccountInfo(accounts[1]!.wallet, 0);
+
     try {
-      const transaction = await klyraClient.placeCustomOrder({
-        subaccount: subaccount,
+      const transactionA = await klyraClient.placeCustomOrder({
+        subaccount: subaccountA,
         ticker: 'BTC-USD',
         type: OrderType.MARKET,
         side: OrderSide.SELL,
@@ -148,15 +149,31 @@ const main = async () => {
         // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365, // TODO: ???
         execution: OrderExecution.DEFAULT,
       });
-      
-      const parsedHash = Buffer.from(transaction.hash).toString('hex');
-      console.log(`Transaction sent with hash [${parsedHash}]`);
+
+      const transactionB = await klyraClient.placeCustomOrder({
+        subaccount: subaccountB,
+        ticker: 'BTC-USD',
+        type: OrderType.MARKET,
+        side: OrderSide.BUY,
+        price: 100000,
+        size: 1,
+        clientId: randomIntFromInterval(0, 100000000),
+        timeInForce: OrderTimeInForce.GTT,
+        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365, // TODO: ???
+        execution: OrderExecution.DEFAULT,
+      });
+
+      const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
+      console.log(`Transaction A sent with hash [${parsedHashA}]`);
+
+      const parsedHashB = Buffer.from(transactionB.hash).toString('hex');
+      console.log(`Transaction B sent with hash [${parsedHashB}]`);
     } catch (error) {
       console.error('Error while creating transaction!');
       console.error(error);
     }
   };
-  
+
   const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
 
   while (true) {
