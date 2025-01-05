@@ -21,7 +21,7 @@ import { nodeConfigs } from './config/nodes.config';
 import { uuidConfigs } from './config/uuids.config';
 
 // Constants
-const GENERATED_ACCOUNTS = 10;
+const GENERATED_ACCOUNTS = 4;
 const MAX_CONCURRENT_TRANSACTIONS = 100;
 const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
 
@@ -140,14 +140,15 @@ const main = async () => {
       const transactionA = await klyraClient.placeCustomOrder({
         subaccount: subaccountA,
         ticker: 'BTC-USD',
-        type: OrderType.MARKET,
+        type: OrderType.LIMIT,
         side: OrderSide.SELL,
         price: 100000,
-        size: 1,
+        size: 0.0001,
         clientId: randomIntFromInterval(0, 100000000),
         timeInForce: OrderTimeInForce.GTT,
-        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365, // TODO: ???
+        goodTilTimeInSeconds: 1000 * 60 * 1, // TODO: ???
         execution: OrderExecution.DEFAULT,
+        postOnly: true,
       });
 
       const transactionB = await klyraClient.placeCustomOrder({
@@ -155,19 +156,22 @@ const main = async () => {
         ticker: 'BTC-USD',
         type: OrderType.MARKET,
         side: OrderSide.BUY,
-        price: 100000,
-        size: 1,
+        price: 100001,
+        size: 0.0001,
         clientId: randomIntFromInterval(0, 100000000),
         timeInForce: OrderTimeInForce.GTT,
-        // goodTilTimeInSeconds: 1000 * 60 * 60 * 24 * 365, // TODO: ???
+        goodTilTimeInSeconds: 1000 * 60 * 1, // TODO: ???
         execution: OrderExecution.DEFAULT,
+        postOnly: true,
       });
 
       const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
-      console.log(`Transaction A sent with hash [${parsedHashA}]`);
+      console.log(`Transaction A sent with hash [${parsedHashA}] for account [${accounts[0]!.name}]`);
+      // console.log(transactionA);
 
       const parsedHashB = Buffer.from(transactionB.hash).toString('hex');
-      console.log(`Transaction B sent with hash [${parsedHashB}]`);
+      console.log(`Transaction B sent with hash [${parsedHashB}] for account [${accounts[1]!.name}]`);
+      // console.log(transactionB);
     } catch (error) {
       console.error('Error while creating transaction!');
       console.error(error);
@@ -187,6 +191,8 @@ const main = async () => {
 
     await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
   }
+
+  // executeOrder();
 };
 
 main();
