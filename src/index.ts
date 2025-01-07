@@ -191,8 +191,6 @@ const main = async () => {
 
     await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
   }
-
-  // executeOrder();
 };
 
 main();
