@@ -178,18 +178,32 @@ const main = async () => {
     }
   };
 
-  const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
+  // const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
+
+  // while (true) {
+  //   if (semaphore.getAvailablePermits() > 0) {
+  //     semaphore.acquire();
+
+  //     executeOrder().then(() => {
+  //       semaphore.release();
+  //     });
+  //   }
+
+  //   await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
+  // }
 
   while (true) {
-    if (semaphore.getAvailablePermits() > 0) {
-      semaphore.acquire();
+    const start = Date.now();
 
-      executeOrder().then(() => {
-        semaphore.release();
-      });
-    }
+    const node = getRandomNode()!;
+    const klyraClient = node.klyraClient!;
 
-    await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
+    const blockHeight = await klyraClient.getChainClient().nodeClient.get.latestBlockHeight();
+
+    const end = Date.now();
+    const elapsed = end - start;
+
+    console.log(`[${new Date().toISOString()}] Block height is [${blockHeight}], request took [${elapsed}ms]`);
   }
 };
 
