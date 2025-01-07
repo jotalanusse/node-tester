@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import {
   OrderExecution,
   OrderSide,
@@ -193,17 +194,17 @@ const main = async () => {
   // }
 
   while (true) {
-    const start = Date.now();
+    const start = performance.now();
 
     const node = getRandomNode()!;
     const klyraClient = node.klyraClient!;
 
     const blockHeight = await klyraClient.getChainClient().nodeClient.get.latestBlockHeight();
 
-    const end = Date.now();
+    const end = performance.now();
     const elapsed = end - start;
 
-    console.log(`[${new Date().toISOString()}] Block height is [${blockHeight}], request took [${elapsed}ms]`);
+    console.log(`[${new Date().toISOString()}] Block height is [${blockHeight}], request took [${elapsed.toFixed(3)}ms]`);
   }
 };
 
