@@ -23,6 +23,10 @@ import { uuidConfigs } from './config/uuids.config';
 import { RollingWindow } from './class/rolling-window';
 
 // Constants
+const MINUTE = 1000 * 60;
+const HOUR = MINUTE * 60;
+const DAY = HOUR * 24;
+
 const GENERATED_ACCOUNTS = 4;
 const MAX_CONCURRENT_TRANSACTIONS = 100;
 const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
@@ -150,13 +154,13 @@ const executeOrder = async () => {
     const transactionA = await klyraClient.placeCustomOrder({
       subaccount: subaccountA,
       ticker: 'BTC-USD',
-      type: OrderType.LIMIT,
+      type: OrderType.MARKET, // TODO: This was a limit order!
       side: OrderSide.SELL,
       price: 100000,
       size: 0.0001,
       clientId: randomIntFromInterval(0, 100000000),
       timeInForce: OrderTimeInForce.GTT,
-      goodTilTimeInSeconds: 1000 * 60 * 1, // TODO: ???
+      goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
       execution: OrderExecution.DEFAULT,
       postOnly: true,
     });
@@ -171,7 +175,7 @@ const executeOrder = async () => {
       size: 0.0001,
       clientId: randomIntFromInterval(0, 100000000),
       timeInForce: OrderTimeInForce.GTT,
-      goodTilTimeInSeconds: 1000 * 60 * 1, // TODO: ???
+      goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
       execution: OrderExecution.DEFAULT,
       postOnly: true,
     });
@@ -194,8 +198,8 @@ const executeOrder = async () => {
     // console.log(transactionB);
   } catch (error) {
     failedTransactionsRollingWindow.record();
-    // console.error('Error while creating transaction!');
-    // console.error(error);
+    console.error('Error while creating transaction!');
+    console.error(error);
   }
 };
 
@@ -247,7 +251,7 @@ const main = async () => {
 
   const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
 
-  while (true) {
+  const loop = async () => {
     if (semaphore.getAvailablePermits() > 0) {
       semaphore.acquire();
 
@@ -256,7 +260,7 @@ const main = async () => {
       });
     }
 
-    await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
+    // await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
 
     if (lastBlockHeightQuery + BLOCK_QUERY_INTERVAL_MS < Date.now()) {
       const node = getRandomNode()!;
@@ -298,7 +302,11 @@ const main = async () => {
 
       lastStatsLog = Date.now();
     }
+
+    setImmediate(loop);
   }
+
+  loop();
 
   // while (true) {
   //   const start = performance.now();
