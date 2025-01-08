@@ -29,7 +29,7 @@ const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms
 const MAX_TRANSACTIONS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const MAX_BLOCKS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const STATS_LOG_INTERVAL_MS = 1000; // 1 second
-const BLOCK_QUERY_INTERVAL_MS = 100; // 100 milliseconds
+const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
 
 const KLYRA_CLIENT_OPTIONS = {
   environment: {
