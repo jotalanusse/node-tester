@@ -16,6 +16,24 @@ const toBigInt = (u: Uint8Array): bigint => {
   return negated ? -abs : abs;
 };
 
+class BlockOperation {
+  height: number;
+  timestamp: Date;
+
+  constructor() {
+    this.height = 0;
+    this.timestamp = new Date();
+  }
+
+  setHeight(height: number) {
+    this.height = height;
+  }
+
+  setTimestamp(timestamp: Date) {
+    this.timestamp = timestamp;
+  }
+}
+
 class Balance {
   amount: number;
 
@@ -41,16 +59,16 @@ export class Account {
   readonly address: string;
   readonly wallet: LocalWallet;
   readonly tDaiBalance: Balance;
-  lastBlockTransfered: number;
-  lastBlockTransacted: number;
+  lastBlockTransfered: BlockOperation;
+  lastBlockTransacted: BlockOperation;
 
   constructor(name: string, address: string, wallet: LocalWallet) {
     this.name = name;
     this.address = address;
     this.wallet = wallet;
     this.tDaiBalance = new Balance(0);
-    this.lastBlockTransfered = 0;
-    this.lastBlockTransacted = 0;
+    this.lastBlockTransfered = new BlockOperation();
+    this.lastBlockTransacted = new BlockOperation();
   }
 
   async updateTDaiBalanceFromNode(klyraClient: Klyra) {
@@ -58,13 +76,17 @@ export class Account {
       .getChainClient()
       .nodeClient.get.getSubaccount(this.address, 0);
 
-    const balance = subaccount.subaccount.assetPositions[0]!.quantums;
+    const assetPositions = subaccount.subaccount.assetPositions;
 
-    const bigintBalance = toBigInt(balance);
-    const normalizedBalance = Number(bigintBalance) / 10 ** 6;
-    const roundedBalance = Math.round(normalizedBalance); // TODO: Do we need precision beyond 1 tDai?
+    if (assetPositions.length !== 0) {
+      const balance = assetPositions[0]!.quantums;
 
-    this.tDaiBalance.setAmount(roundedBalance);
+      const bigintBalance = toBigInt(balance);
+      const normalizedBalance = Number(bigintBalance) / 10 ** 6;
+      const roundedBalance = Math.round(normalizedBalance); // TODO: Do we need precision beyond 1 tDai?
+
+      this.tDaiBalance.setAmount(roundedBalance);
+    }
   }
 
   async transferTDai(klyraClient: Klyra, address: string, amount: string) {

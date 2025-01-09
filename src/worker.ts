@@ -21,7 +21,7 @@ import { RollingWindow } from './class/rolling-window';
 import { LogMessage, Message, MessageWrapper } from './messages/messages';
 
 // Constants
-const MAX_CONCURRENT_TRANSACTIONS = 4;
+const MAX_CONCURRENT_TRANSACTIONS = 10;
 const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 
 // State
@@ -58,15 +58,17 @@ const executeOrder = async () => {
   const node = getRandomNode(nodes)!;
   const klyraClient = node.klyraClient!;
 
-  const subaccountA = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
-  const subaccountB = new WalletSubaccountInfo(accounts[1]!.wallet, 0);
+  accounts.sort(
+    (a, b) =>
+      a.lastBlockTransfered.timestamp.getTime() -
+      b.lastBlockTransfered.timestamp.getTime(),
+  );
 
-  sendLogMessage(`00000000000000000000000000000000`);
+  const accountA = accounts[0]!;
+  const accountB = accounts[1]!;
 
-  const test = await klyraClient.getChainClient().nodeClient.get.latestBlockHeight();
-  sendLogMessage(`Block is [${test.toString()}]`);
-
-  sendLogMessage(`1111111111111111111111111`);
+  const subaccountA = new WalletSubaccountInfo(accountA.wallet, 0);
+  const subaccountB = new WalletSubaccountInfo(accountB.wallet, 0);
 
   const transactionA = await klyraClient.placeCustomOrder({
     subaccount: subaccountA,
@@ -81,9 +83,8 @@ const executeOrder = async () => {
     execution: OrderExecution.DEFAULT,
     postOnly: true,
   });
+  accountA.lastBlockTransfered.setTimestamp(new Date());
   transactionsRollingWindow.record();
-
-  sendLogMessage(`222222222222222222222222222222`);
 
   const transactionB = await klyraClient.placeCustomOrder({
     subaccount: subaccountB,
@@ -98,10 +99,8 @@ const executeOrder = async () => {
     execution: OrderExecution.DEFAULT,
     postOnly: true,
   });
+  accountB.lastBlockTransfered.setTimestamp(new Date());
   transactionsRollingWindow.record();
-
-  sendLogMessage(`3333333333333333333333333333333333333`);
-
 
   const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
   sendLogMessage(
@@ -146,7 +145,7 @@ const main = async () => {
 
     accounts.push(account);
     sendLogMessage(
-      `Account [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
+      `Account number [${i}] with name [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
     );
   }
 
@@ -155,55 +154,24 @@ const main = async () => {
   );
 
   while (true) {
-    const node = getRandomNode(nodes)!;
-    const klyraClient = node.klyraClient!;
-  
-    const subaccountA = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
-  
-    sendLogMessage(`00000000000000000000000000000000`);
-  
-    const test = await klyraClient.getChainClient().nodeClient.get.latestBlockHeight();
-    sendLogMessage(`Block is [${test.toString()}]`);
-  
-    sendLogMessage(`1111111111111111111111111`);
-  
-    const transactionA = await klyraClient.placeCustomOrder({
-      subaccount: subaccountA,
-      ticker: 'BTC-USD',
-      type: OrderType.LIMIT, // TODO: This was a limit order!
-      side: OrderSide.SELL,
-      price: 100000,
-      size: 0.0001,
-      clientId: randomIntFromInterval(0, 100000000),
-      timeInForce: OrderTimeInForce.GTT,
-      goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
-      execution: OrderExecution.DEFAULT,
-      postOnly: true,
-    });
+    if (transactionsSemaphore.getAvailablePermits() > 0) {
+      transactionsSemaphore.acquire();
 
-    console.log(transactionA);
+      executeOrder()
+        .then(() => {
+          transactionsSemaphore.release();
+        })
+        .catch((error: any) => {
+          sendLogMessage(`Error in executeOrder: ${error.message}`);
+          console.error(error);
 
-    // if (transactionsSemaphore.getAvailablePermits() > 0) {
-    //   sendLogMessage(`Transactions semaphore is SSSSSSSSSSSSSSs`);
+          transactionsSemaphore.release();
+        });
 
-    //   transactionsSemaphore.acquire();
-
-    //   await executeOrder()
-    //     .then(() => {
-    //       transactionsSemaphore.release();
-    //     })
-    //     .catch((error: any) => {
-    //       sendLogMessage(`Error in executeOrder: ${error.message}`);
-    //       // console.error(error);
-
-    //       transactionsSemaphore.release();
-    //     });
-
-    //   await delay(1);
-    // } else {
-    //   sendLogMessage(`Transactions semaphore is full`);
-    //   await delay(1000);
-    // }
+      await delay(0);
+    } else {
+      await delay(5);
+    }
   }
 };
 

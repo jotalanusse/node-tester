@@ -49,10 +49,10 @@ export const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
         rpc: `http://${nodeConfig.ip}:${nodeConfig.port}`,
       },
       indexer: {
-        // rest: 'https://demo-api.klyra.com',
-        // ws: 'wss://demo-api.klyra.com/v4/ws',
-        rest: 'https://test.com',
-        ws: 'wss://test.com/v4/ws',
+        rest: 'https://demo-api.klyra.com',
+        ws: 'wss://demo-api.klyra.com/v4/ws',
+        // rest: 'https://test.com',
+        // ws: 'wss://test.com/v4/ws',
       },
     },
     websocket: {
