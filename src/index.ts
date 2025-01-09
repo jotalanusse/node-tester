@@ -37,7 +37,6 @@ const MAX_BLOCKS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const STATS_LOG_INTERVAL_MS = 1000; // 1 second
 const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
 const MINIMUM_ACCOUNT_BALANCE = 10000000; // 10,000,000 tDai
-const TARGET_ACCOUNT_BALANCE = 100000000; // 100,000,000 tDai
 
 const KLYRA_CLIENT_OPTIONS = {
   environment: {
@@ -159,7 +158,7 @@ const transferTDai = async () => {
   const klyraClient = node.klyraClient!;
 
   let senderAccounts = accounts.filter(
-    (account) => account.tDaiBalance.amount >= TARGET_ACCOUNT_BALANCE,
+    (account) => account.tDaiBalance.amount >= MINIMUM_ACCOUNT_BALANCE * 5, // TODO: Remove the 5x!
   );
   senderAccounts = senderAccounts.filter(
     (account) => account.lastBlockTransacted < lastBlockHeight,
@@ -186,7 +185,7 @@ const transferTDai = async () => {
 
   const amount = Math.min(
     sender.tDaiBalance.amount - MINIMUM_ACCOUNT_BALANCE,
-    TARGET_ACCOUNT_BALANCE,
+    MINIMUM_ACCOUNT_BALANCE,
   );
 
   try {
