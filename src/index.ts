@@ -193,6 +193,9 @@ const transferTDai = async () => {
     await sender.transferTDai(klyraClient, receiver.address, amount.toString());
     transfersRollingWindow.record();
 
+    sender.tDaiBalance.subtractAmount(amount);
+    receiver.tDaiBalance.addAmount(amount);
+
     sender.lastBlockTransfered = lastBlockHeight;
   } catch (error) {
     failedTransfersRollingWindow.record();
