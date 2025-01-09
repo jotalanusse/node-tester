@@ -7,5 +7,5 @@ yarn
 
 Then run the project:
 ```bash
-npx ts-node src/index.ts
+yarn run dev
 ```

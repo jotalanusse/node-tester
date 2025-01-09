@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "@klyra/core": "^3.0.3"
+  },
+  "scripts": {
+    "dev": "rm -rf ./dist && npx tsc && node ./dist/index.js"
   }
 }

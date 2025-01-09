@@ -22,6 +22,8 @@ import { nodeConfigs } from './config/nodes.config';
 import { uuidConfigs } from './config/uuids.config';
 import { RollingWindow } from './class/rolling-window';
 import { SlowBuffer } from 'node:buffer';
+import { formatNumber, formatTime, getRandomNode, randomIntFromInterval } from './utils/utils';
+import { spawnWorkers } from './parent';
 
 // Constants
 const MINUTE = 1000 * 60;
@@ -33,7 +35,6 @@ const MAX_CONCURRENT_TRANSACTIONS = 10;
 const MAX_CONCURRENT_TRANSFERS = 10;
 // const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
 const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
-const MAX_BLOCKS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const STATS_LOG_INTERVAL_MS = 1000; // 1 second
 const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
 const MINIMUM_ACCOUNT_BALANCE = 10000000; // 10,000,000 tDai
@@ -79,9 +80,7 @@ const failedTransfersRollingWindow = new RollingWindow(
   MAX_ROLLING_WINDOW_SIZE_MS,
 );
 
-const blocksRollingWindow = new RollingWindow(
-  MAX_BLOCKS_ROLLING_WINDOW_SIZE_MS,
-);
+const blocksRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
 
 let lastBlockHeightQuery = 0;
 let lastBlockHeight = 0;
@@ -104,59 +103,7 @@ const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
   return klyraClient;
 };
 
-const randomIntFromInterval = (min: number, max: number) => {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-};
-
-const getRandomNode = (): Node | undefined => {
-  const index = Math.floor(Math.random() * nodes.length);
-  return nodes[index];
-};
-
-const getRandomAccount = (): Account => {
-  const index = Math.floor(Math.random() * accounts.length);
-  return accounts[index]!;
-};
-
-const formatTime = (seconds: number) => {
-  const pad = (num: number) => (num < 10 ? `0${num}` : num);
-
-  const H = pad(Math.floor(seconds / 3600));
-  const i = pad(Math.floor((seconds % 3600) / 60));
-  const s = pad(Math.floor(seconds % 60));
-
-  return `${H}:${i}:${s}`;
-};
-
-const formatNumber = (num: number): string => {
-  if (num >= 1_000_000_000) {
-    return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B';
-  } else if (num >= 1_000_000) {
-    return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  } else if (num >= 1_000) {
-    return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
-  } else {
-    return num.toString();
-  }
-};
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const queryBlockHeight = async (klyraClient: Klyra) => {
-  const blockHeight = await klyraClient
-    .getChainClient()
-    .nodeClient.get.latestBlockHeight();
-
-  if (blockHeight > lastBlockHeight) {
-    lastBlockHeight = blockHeight;
-    blocksRollingWindow.record();
-  }
-};
-
-const transferTDai = async () => {
-  const node = getRandomNode()!;
-  const klyraClient = node.klyraClient!;
-
+const transferTDai = async (klyraClient: Klyra) => {
   let senderAccounts = accounts.filter(
     (account) => account.tDaiBalance.amount >= MINIMUM_ACCOUNT_BALANCE * 5, // TODO: Remove the 5x!
   );
@@ -205,7 +152,7 @@ const transferTDai = async () => {
 
 // TODO: This is just a test function to send trasnactions
 const executeOrder = async () => {
-  const node = getRandomNode()!;
+  const node = getRandomNode(nodes)!;
   const klyraClient = node.klyraClient!;
 
   const subaccountA = new WalletSubaccountInfo(accounts[0]!.wallet, 0);
@@ -277,7 +224,7 @@ const main = async () => {
 
   // Setup validator accounts
   for (const validatorAccountConfig of validatorAccountConfigs) {
-    const node = getRandomNode()!;
+    const node = getRandomNode(nodes)!;
     const klyraClient = node.klyraClient!;
 
     const account = await Account.fromMnemonic(
@@ -296,7 +243,7 @@ const main = async () => {
 
   // Setup generated accounts
   for (let i = 0; i < GENERATED_ACCOUNTS; i++) {
-    const node = getRandomNode()!;
+    const node = getRandomNode(nodes)!;
     const klyraClient = node.klyraClient!;
 
     const uuid = uuidConfigs[i]!;
@@ -310,90 +257,83 @@ const main = async () => {
     );
   }
 
-  const loop = async () => {
-    // Transactions
-    if (transactionsSemaphore.getAvailablePermits() > 0) {
-      transactionsSemaphore.acquire();
+  spawnWorkers(nodes, accounts);
 
-      executeOrder().then(() => {
-        transactionsSemaphore.release();
-      });
-    }
+  // const loop = async () => {
+  //   // Transactions
+  //   if (transactionsSemaphore.getAvailablePermits() > 0) {
+  //     transactionsSemaphore.acquire();
 
-    // Transfers
-    // if (transfersSemaphore.getAvailablePermits() > 0) {
-    //   transfersSemaphore.acquire();
+  //     executeOrder().then(() => {
+  //       transactionsSemaphore.release();
+  //     });
+  //   }
 
-    //   transferTDai().then(() => {
-    //     transfersSemaphore.release();
-    //   });
-    // }
+  //   // Query block height
+  //   if (lastBlockHeightQuery + BLOCK_QUERY_INTERVAL_MS < Date.now()) {
+  //     const node = getRandomNode(nodes)!;
+  //     const klyraClient = node.klyraClient!;
 
-    // Query block height
-    if (lastBlockHeightQuery + BLOCK_QUERY_INTERVAL_MS < Date.now()) {
-      const node = getRandomNode()!;
-      const klyraClient = node.klyraClient!;
+  //     queryBlockHeight(klyraClient);
+  //   }
 
-      queryBlockHeight(klyraClient);
-    }
+  //   // Stats log
+  //   if (lastStatsLog + STATS_LOG_INTERVAL_MS < Date.now()) {
+  //     console.log(
+  //       `[${formatTime(
+  //         (Date.now() - startTime) / 1000,
+  //       )}] Transaction stats (successful/failed): 1s [${formatNumber(
+  //         transactionsRollingWindow.getCount(1000),
+  //       )}/${formatNumber(
+  //         failedTransactionsRollingWindow.getCount(1000),
+  //       )}] | 1m [${formatNumber(
+  //         transactionsRollingWindow.getCount(1000 * 60),
+  //       )}/${formatNumber(
+  //         failedTransactionsRollingWindow.getCount(1000 * 60),
+  //       )}] | 5m [${formatNumber(
+  //         transactionsRollingWindow.getCount(1000 * 60 * 5),
+  //       )}/${formatNumber(
+  //         failedTransactionsRollingWindow.getCount(1000 * 60 * 5),
+  //       )}]`,
+  //     );
 
-    // Stats log
-    if (lastStatsLog + STATS_LOG_INTERVAL_MS < Date.now()) {
-      console.log(
-        `[${formatTime(
-          (Date.now() - startTime) / 1000,
-        )}] Transaction stats (successful/failed): 1s [${formatNumber(
-          transactionsRollingWindow.getCount(1000),
-        )}/${formatNumber(
-          failedTransactionsRollingWindow.getCount(1000),
-        )}] | 1m [${formatNumber(
-          transactionsRollingWindow.getCount(1000 * 60),
-        )}/${formatNumber(
-          failedTransactionsRollingWindow.getCount(1000 * 60),
-        )}] | 5m [${formatNumber(
-          transactionsRollingWindow.getCount(1000 * 60 * 5),
-        )}/${formatNumber(
-          failedTransactionsRollingWindow.getCount(1000 * 60 * 5),
-        )}]`,
-      );
+  //     console.log(
+  //       `[${formatTime(
+  //         (Date.now() - startTime) / 1000,
+  //       )}] Transfer stats (successful/failed): 1s [${formatNumber(
+  //         transfersRollingWindow.getCount(1000),
+  //       )}/${formatNumber(
+  //         failedTransfersRollingWindow.getCount(1000),
+  //       )}] | 1m [${formatNumber(
+  //         transfersRollingWindow.getCount(1000 * 60),
+  //       )}/${formatNumber(
+  //         failedTransfersRollingWindow.getCount(1000 * 60),
+  //       )}] | 5m [${formatNumber(
+  //         transfersRollingWindow.getCount(1000 * 60 * 5),
+  //       )}/${formatNumber(
+  //         failedTransfersRollingWindow.getCount(1000 * 60 * 5),
+  //       )}]`,
+  //     );
 
-      console.log(
-        `[${formatTime(
-          (Date.now() - startTime) / 1000,
-        )}] Transfer stats (successful/failed): 1s [${formatNumber(
-          transfersRollingWindow.getCount(1000),
-        )}/${formatNumber(
-          failedTransfersRollingWindow.getCount(1000),
-        )}] | 1m [${formatNumber(
-          transfersRollingWindow.getCount(1000 * 60),
-        )}/${formatNumber(
-          failedTransfersRollingWindow.getCount(1000 * 60),
-        )}] | 5m [${formatNumber(
-          transfersRollingWindow.getCount(1000 * 60 * 5),
-        )}/${formatNumber(
-          failedTransfersRollingWindow.getCount(1000 * 60 * 5),
-        )}]`,
-      );
+  //     console.log(
+  //       `[${formatTime(
+  //         (Date.now() - startTime) / 1000,
+  //       )}] Block stats: 1s [${formatNumber(
+  //         blocksRollingWindow.getCount(1000),
+  //       )}] | 1m [${formatNumber(
+  //         blocksRollingWindow.getCount(1000 * 60),
+  //       )}] | 5m [${formatNumber(
+  //         blocksRollingWindow.getCount(1000 * 60 * 5),
+  //       )}]`,
+  //     );
 
-      console.log(
-        `[${formatTime(
-          (Date.now() - startTime) / 1000,
-        )}] Block stats: 1s [${formatNumber(
-          blocksRollingWindow.getCount(1000),
-        )}] | 1m [${formatNumber(
-          blocksRollingWindow.getCount(1000 * 60),
-        )}] | 5m [${formatNumber(
-          blocksRollingWindow.getCount(1000 * 60 * 5),
-        )}]`,
-      );
+  //     lastStatsLog = Date.now();
+  //   }
 
-      lastStatsLog = Date.now();
-    }
+    // setImmediate(loop);
+  // };
 
-    setImmediate(loop);
-  };
-
-  loop();
+  // loop();
 };
 
 main();
