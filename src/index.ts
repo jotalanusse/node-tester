@@ -319,13 +319,13 @@ const main = async () => {
     }
 
     // Transfers
-    // if (transfersSemaphore.getAvailablePermits() > 0) {
-    //   transfersSemaphore.acquire();
+    if (transfersSemaphore.getAvailablePermits() > 0) {
+      transfersSemaphore.acquire();
 
-    //   transferTDai().then(() => {
-    //     transfersSemaphore.release();
-    //   });
-    // }
+      transferTDai().then(() => {
+        transfersSemaphore.release();
+      });
+    }
 
     // Query block height
     if (lastBlockHeightQuery + BLOCK_QUERY_INTERVAL_MS < Date.now()) {
