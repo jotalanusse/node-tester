@@ -1,5 +1,8 @@
+import { Stats } from '../interfaces/stats.interface';
+
 export enum MessageType {
   Log = 'log',
+  Stats = 'stats',
 }
 
 export abstract class Message {
@@ -13,6 +16,16 @@ export class LogMessage extends Message {
   constructor(message: string) {
     super();
     this.message = message;
+  }
+}
+
+export class StatsMessage extends Message {
+  override type: MessageType = MessageType.Stats;
+  stats: Stats;
+
+  constructor(stats: Stats) {
+    super();
+    this.stats = stats;
   }
 }
 

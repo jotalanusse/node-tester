@@ -2,9 +2,25 @@ import os from 'os';
 import { Worker } from 'worker_threads';
 import { WorkerData } from './interfaces/worker-data.interface';
 import { NodeConfig } from './interfaces/node-config.interface';
-import { formatTime } from './utils/utils';
-import { LogMessage, MessageType, MessageWrapper } from './messages/messages';
+import { formatNumber, formatTime } from './utils/utils';
+import {
+  LogMessage,
+  MessageType,
+  MessageWrapper,
+  StatsMessage,
+} from './messages/messages';
+import { RollingWindow } from './class/rolling-window';
 
+// Constants
+const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
+
+// State
+const transactionsRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
+const failedTransactionsRollingWindow = new RollingWindow(
+  MAX_ROLLING_WINDOW_SIZE_MS,
+);
+
+// Handlers
 const onWorkerMessage = (messageWrapper: MessageWrapper): void => {
   if (messageWrapper.type === MessageType.Log) {
     const logMessage = messageWrapper.message as LogMessage;
@@ -15,15 +31,27 @@ const onWorkerMessage = (messageWrapper: MessageWrapper): void => {
 
     console.log(formattedMessage);
   }
+
+  if (messageWrapper.type === MessageType.Stats) {
+    const statsMessage = messageWrapper.message as StatsMessage;
+
+    const stats = statsMessage.stats;
+
+    transactionsRollingWindow.record(stats.transactions.successful);
+    failedTransactionsRollingWindow.record(stats.transactions.failed);
+  }
 };
+
 const onWorkerError = (err: Error): void => {
   console.error('Worker encountered an error');
   console.error(err);
 };
+
 const onWorkerExit = (code: number): void => {
   console.log(`Worker exited with code ${code}`);
-}
+};
 
+// Spawn workers
 export const spawnWorkers = (
   nodeConfigs: NodeConfig[],
   uuidConfigs: string[],
@@ -57,4 +85,29 @@ export const spawnWorkers = (
     worker.on('error', onWorkerError);
     worker.on('exit', onWorkerExit);
   }
+
+  const startTime = Date.now();
+  const logStats = () => {
+    console.log(
+      `[${formatTime(
+        (Date.now() - startTime) / 1000,
+      )}] Transaction stats (successful/failed): 1s [${formatNumber(
+        transactionsRollingWindow.getCount(1000),
+      )}/${formatNumber(
+        failedTransactionsRollingWindow.getCount(1000),
+      )}] | 1m [${formatNumber(
+        transactionsRollingWindow.getCount(1000 * 60),
+      )}/${formatNumber(
+        failedTransactionsRollingWindow.getCount(1000 * 60),
+      )}] | 5m [${formatNumber(
+        transactionsRollingWindow.getCount(1000 * 60 * 5),
+      )}/${formatNumber(
+        failedTransactionsRollingWindow.getCount(1000 * 60 * 5),
+      )}]`,
+    );
+
+    setTimeout(logStats, 1000);
+  };
+
+  logStats();
 };

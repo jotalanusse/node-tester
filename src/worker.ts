@@ -18,11 +18,18 @@ import {
   WalletSubaccountInfo,
 } from '@klyra/core';
 import { RollingWindow } from './class/rolling-window';
-import { LogMessage, Message, MessageWrapper } from './messages/messages';
+import {
+  LogMessage,
+  Message,
+  MessageWrapper,
+  StatsMessage,
+} from './messages/messages';
+import { send } from 'process';
 
 // Constants
-const MAX_CONCURRENT_TRANSACTIONS = 10;
+const MAX_CONCURRENT_TRANSACTIONS = 100;
 const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
+const STATS_MESSAGE_INTERVAL_MS = 500; // 10 second
 
 // State
 const { id, nodeConfigs, uuidConfigs } = workerData as WorkerData;
@@ -53,6 +60,17 @@ const sendLogMessage = (message: string) => {
   sendMessage(logMessage);
 };
 
+const sendStatsMessage = () => {
+  const statsMessage = new StatsMessage({
+    transactions: {
+      successful: transactionsRollingWindow.drain(),
+      failed: failedTransactionsRollingWindow.drain(),
+    },
+  });
+
+  sendMessage(statsMessage);
+};
+
 // TODO: This is just a test function to send trasnactions
 const executeOrder = async () => {
   const node = getRandomNode(nodes)!;
@@ -67,56 +85,63 @@ const executeOrder = async () => {
   const accountA = accounts[0]!;
   const accountB = accounts[1]!;
 
+  console.log(`Account A has not been used for [${Date.now() - accountA.lastBlockTransfered.timestamp.getTime()}] ms`);
+
   const subaccountA = new WalletSubaccountInfo(accountA.wallet, 0);
   const subaccountB = new WalletSubaccountInfo(accountB.wallet, 0);
 
-  const transactionA = await klyraClient.placeCustomOrder({
-    subaccount: subaccountA,
-    ticker: 'BTC-USD',
-    type: OrderType.LIMIT, // TODO: This was a limit order!
-    side: OrderSide.SELL,
-    price: 100000,
-    size: 0.0001,
-    clientId: randomIntFromInterval(0, 100000000),
-    timeInForce: OrderTimeInForce.GTT,
-    goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
-    execution: OrderExecution.DEFAULT,
-    postOnly: true,
-  });
-  accountA.lastBlockTransfered.setTimestamp(new Date());
-  transactionsRollingWindow.record();
+  try {
+    const transactionA = await klyraClient.placeCustomOrder({
+      subaccount: subaccountA,
+      ticker: 'BTC-USD',
+      type: OrderType.LIMIT, // TODO: This was a limit order!
+      side: OrderSide.SELL,
+      price: 100000,
+      size: 0.0001,
+      clientId: randomIntFromInterval(0, 100000000),
+      timeInForce: OrderTimeInForce.GTT,
+      goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
+      execution: OrderExecution.DEFAULT,
+      postOnly: true,
+    });
+    accountA.lastBlockTransfered.setTimestamp(new Date());
+    transactionsRollingWindow.record();
 
-  const transactionB = await klyraClient.placeCustomOrder({
-    subaccount: subaccountB,
-    ticker: 'BTC-USD',
-    type: OrderType.MARKET,
-    side: OrderSide.BUY,
-    price: 100001,
-    size: 0.0001,
-    clientId: randomIntFromInterval(0, 100000000),
-    timeInForce: OrderTimeInForce.GTT,
-    goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
-    execution: OrderExecution.DEFAULT,
-    postOnly: true,
-  });
-  accountB.lastBlockTransfered.setTimestamp(new Date());
-  transactionsRollingWindow.record();
+    const transactionB = await klyraClient.placeCustomOrder({
+      subaccount: subaccountB,
+      ticker: 'BTC-USD',
+      type: OrderType.MARKET,
+      side: OrderSide.BUY,
+      price: 100001,
+      size: 0.0001,
+      clientId: randomIntFromInterval(0, 100000000),
+      timeInForce: OrderTimeInForce.GTT,
+      goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
+      execution: OrderExecution.DEFAULT,
+      postOnly: true,
+    });
+    accountB.lastBlockTransfered.setTimestamp(new Date());
+    transactionsRollingWindow.record();
 
-  const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
-  sendLogMessage(
-    `Transaction A sent with hash [${parsedHashA}] for account [${
-      accounts[0]!.name
-    }]`,
-  );
-  // console.log(transactionA);
+    // const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
+    // sendLogMessage(
+    //   `Transaction A sent with hash [${parsedHashA}] for account [${
+    //     accounts[0]!.name
+    //   }]`,
+    // );
 
-  const parsedHashB = Buffer.from(transactionB.hash).toString('hex');
-  sendLogMessage(
-    `Transaction B sent with hash [${parsedHashB}] for account [${
-      accounts[1]!.name
-    }]`,
-  );
-  // console.log(transactionB);
+    // const parsedHashB = Buffer.from(transactionB.hash).toString('hex');
+    // sendLogMessage(
+    //   `Transaction B sent with hash [${parsedHashB}] for account [${
+    //     accounts[1]!.name
+    //   }]`,
+    // );
+  } catch (error: any) {
+    failedTransactionsRollingWindow.record();
+
+    // sendLogMessage(`Error in executeOrder: ${error.message}`);
+    // console.error(error);
+  }
 };
 
 // Main
@@ -153,6 +178,8 @@ const main = async () => {
     `Worker initialized transaction loop with [${accounts.length}] accounts`,
   );
 
+  let lastStatsMessageSent = Date.now();
+
   while (true) {
     if (transactionsSemaphore.getAvailablePermits() > 0) {
       transactionsSemaphore.acquire();
@@ -162,8 +189,8 @@ const main = async () => {
           transactionsSemaphore.release();
         })
         .catch((error: any) => {
-          sendLogMessage(`Error in executeOrder: ${error.message}`);
-          console.error(error);
+          // sendLogMessage(`Error in executeOrder: ${error.message}`);
+          // console.error(error);
 
           transactionsSemaphore.release();
         });
@@ -171,6 +198,11 @@ const main = async () => {
       await delay(0);
     } else {
       await delay(5);
+    }
+
+    if (lastStatsMessageSent + STATS_MESSAGE_INTERVAL_MS < Date.now()) {
+      sendStatsMessage();
+      lastStatsMessageSent = Date.now();
     }
   }
 };

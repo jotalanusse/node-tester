@@ -36,14 +36,14 @@ const MINUTE = 1000 * 60;
 const HOUR = MINUTE * 60;
 const DAY = HOUR * 24;
 
-const GENERATED_ACCOUNTS = 200;
+const GENERATED_ACCOUNTS = 1640;
 const MAX_CONCURRENT_TRANSACTIONS = 10;
 const MAX_CONCURRENT_TRANSFERS = 10;
 // const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
 const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const STATS_LOG_INTERVAL_MS = 1000; // 1 second
 const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
-const MINIMUM_ACCOUNT_BALANCE = 100000000; // 100,000,000 tDai
+const MINIMUM_ACCOUNT_BALANCE = 1000000; // 1,000,000 tDai
 
 // Global State
 const startTime = Date.now();
@@ -148,31 +148,31 @@ const main = async () => {
   }
 
   // Setup generated accounts
-  for (let i = 0; i < uuidConfigs.length; i++) {
-    const node = getRandomNode(nodes)!;
-    const klyraClient = node.klyraClient!;
+  // for (let i = 1395; i < uuidConfigs.length; i++) {
+  //   const node = getRandomNode(nodes)!;
+  //   const klyraClient = node.klyraClient!;
 
-    const uuid = uuidConfigs[i]!;
+  //   const uuid = uuidConfigs[i]!;
 
-    const account = await Account.fromUUID(klyraClient, uuid);
-    await account.updateTDaiBalanceFromNode(klyraClient);
+  //   const account = await Account.fromUUID(klyraClient, uuid);
+  //   await account.updateTDaiBalanceFromNode(klyraClient);
 
-    accounts.push(account);
-    console.log(
-      `Account number [${i}] with name [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
-    );
+  //   accounts.push(account);
+  //   console.log(
+  //     `Account number [${i}] with name [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
+  //   );
 
-    if (account.tDaiBalance.amount < MINIMUM_ACCOUNT_BALANCE) {
-      const transferAmount =
-        MINIMUM_ACCOUNT_BALANCE - account.tDaiBalance.amount;
+  //   if (account.tDaiBalance.amount < MINIMUM_ACCOUNT_BALANCE) {
+  //     const transferAmount =
+  //       MINIMUM_ACCOUNT_BALANCE - account.tDaiBalance.amount;
 
-      await accounts[0]?.transferTDai(
-        klyraClient,
-        account.address,
-        transferAmount.toString(),
-      );
-    }
-  }
+  //     await accounts[1]?.transferTDai(
+  //       klyraClient,
+  //       account.address,
+  //       transferAmount.toString(),
+  //     );
+  //   }
+  // }
 
   const slicedUuidConfigs = uuidConfigs.slice(0, GENERATED_ACCOUNTS);
   spawnWorkers(nodeConfigs, slicedUuidConfigs);
