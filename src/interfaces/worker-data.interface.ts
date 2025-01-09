@@ -1,8 +1,7 @@
-import { Account } from '../class/account';
-import { Node } from '../class/node';
+import { NodeConfig } from './node-config.interface';
 
 export interface WorkerData {
   id: number;
-  nodes: Node[];
-  accounts: Account[];
+  nodeConfigs: NodeConfig[];
+  uuidConfigs: string[];
 }

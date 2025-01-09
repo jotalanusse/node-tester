@@ -1,24 +1,52 @@
-import { Worker, workerData } from 'worker_threads';
 import os from 'os';
-import { Node } from './class/node';
-import { Account } from './class/account';
+import { Worker } from 'worker_threads';
 import { WorkerData } from './interfaces/worker-data.interface';
+import { NodeConfig } from './interfaces/node-config.interface';
+import { formatTime } from './utils/utils';
+import { LogMessage, MessageType, MessageWrapper } from './messages/messages';
 
-const onWorkerMessage = (message: string): void => {};
-const onWorkerError = (err: Error): void => {};
-const onWorkerExit = (code: number): void => {};
+const onWorkerMessage = (messageWrapper: MessageWrapper): void => {
+  if (messageWrapper.type === MessageType.Log) {
+    const logMessage = messageWrapper.message as LogMessage;
 
-export const spawnWorkers = (nodes: Node[], accounts: Account[]): void => {
+    const formattedMessage = `[${formatTime(
+      new Date().getSeconds(),
+    )}] [Worker ${messageWrapper.workerId}]: ${logMessage.message}`;
+
+    console.log(formattedMessage);
+  }
+};
+const onWorkerError = (err: Error): void => {
+  console.error('Worker encountered an error');
+  console.error(err);
+};
+const onWorkerExit = (code: number): void => {
+  console.log(`Worker exited with code ${code}`);
+}
+
+export const spawnWorkers = (
+  nodeConfigs: NodeConfig[],
+  uuidConfigs: string[],
+): void => {
   const cpus = os.cpus();
   const totalCpus = cpus.length;
 
-  console.log(`Total CPUs [${totalCpus}]`);
+  const numberOfWorkers = Math.min(totalCpus, uuidConfigs.length);
 
-  for (let i = 0; i <= totalCpus; i++) {
+  console.log(`Spawning [${numberOfWorkers}] workers`);
+
+  // TODO: Check this logic!
+  // Divide uuids equally among workers
+  const chunkSize = Math.ceil(uuidConfigs.length / numberOfWorkers);
+  const uuidChunks = Array.from({ length: numberOfWorkers }, (_, i) =>
+    uuidConfigs.slice(i * chunkSize, (i + 1) * chunkSize),
+  );
+
+  for (let i = 0; i < numberOfWorkers; i++) {
     const workerData: WorkerData = {
       id: i,
-      nodes,
-      accounts,
+      nodeConfigs,
+      uuidConfigs: uuidChunks[i] || [], // Default to an empty array
     };
 
     const worker = new Worker('./dist/worker.js', {

@@ -1,5 +1,6 @@
-import { Account } from '@klyra/core';
+import { Account, Klyra } from '@klyra/core';
 import { Node } from '../class/node';
+import { NodeConfig } from 'src/interfaces/node-config.interface';
 
 export const randomIntFromInterval = (min: number, max: number) => {
   return Math.floor(Math.random() * (max - min + 1) + min);
@@ -39,3 +40,32 @@ export const formatNumber = (num: number): string => {
 
 export const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+export const createKlyraClient = (nodeConfig: NodeConfig): Klyra => {
+  const klyraClientOptions = {
+    environment: {
+      chainId: 'klyra-testnet',
+      node: {
+        rpc: `http://${nodeConfig.ip}:${nodeConfig.port}`,
+      },
+      indexer: {
+        // rest: 'https://demo-api.klyra.com',
+        // ws: 'wss://demo-api.klyra.com/v4/ws',
+        rest: 'https://test.com',
+        ws: 'wss://test.com/v4/ws',
+      },
+    },
+    websocket: {
+      subscribeOnConnect: false,
+    },
+    fees: {
+      subaccountNumber: 0,
+      feePpm: 0, // TODO: maybe set this to a higher value?
+      address: 'klyra199tqg4wdlnu4qjlxchpd7seg454937hju8xa57', // Use Alice's address
+    },
+  };
+
+  const klyraClient = new Klyra(klyraClientOptions);
+
+  return klyraClient;
+};

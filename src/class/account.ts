@@ -54,11 +54,6 @@ export class Account {
   }
 
   async updateTDaiBalanceFromNode(klyraClient: Klyra) {
-    // const coin = await klyraClient
-    //   .getChainClient()
-    //   .nodeClient.get.getAccountBalance(this.address, 'utdai');
-    // this.tDaiBalance.setAmount(parseInt(coin!.amount));
-
     const subaccount = await klyraClient
       .getChainClient()
       .nodeClient.get.getSubaccount(this.address, 0);
