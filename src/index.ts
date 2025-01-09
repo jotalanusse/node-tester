@@ -21,19 +21,23 @@ import { validatorAccountConfigs } from './config/validator-accounts.config';
 import { nodeConfigs } from './config/nodes.config';
 import { uuidConfigs } from './config/uuids.config';
 import { RollingWindow } from './class/rolling-window';
+import { SlowBuffer } from 'node:buffer';
 
 // Constants
 const MINUTE = 1000 * 60;
 const HOUR = MINUTE * 60;
 const DAY = HOUR * 24;
 
-const GENERATED_ACCOUNTS = 4;
-const MAX_CONCURRENT_TRANSACTIONS = 100;
-const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
-const MAX_TRANSACTIONS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
+const GENERATED_ACCOUNTS = 10;
+const MAX_CONCURRENT_TRANSACTIONS = 10;
+const MAX_CONCURRENT_TRANSFERS = 10;
+// const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
+const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const MAX_BLOCKS_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 const STATS_LOG_INTERVAL_MS = 1000; // 1 second
 const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
+const MINIMUM_ACCOUNT_BALANCE = 10000000; // 10,000,000 tDai
+const TARGET_ACCOUNT_BALANCE = 100000000; // 100,000,000 tDai
 
 const KLYRA_CLIENT_OPTIONS = {
   environment: {
@@ -42,8 +46,10 @@ const KLYRA_CLIENT_OPTIONS = {
       rpc: 'http://1.1.1.1:26657', // This will be replaced by the actual node IP
     },
     indexer: {
-      rest: 'https://demo-api.klyra.com',
-      ws: 'wss://demo-api.klyra.com/v4/ws',
+      // rest: 'https://demo-api.klyra.com',
+      // ws: 'wss://demo-api.klyra.com/v4/ws',
+      rest: 'https://test.com',
+      ws: 'wss://test.com/v4/ws',
     },
   },
   websocket: {
@@ -61,11 +67,17 @@ const startTime = Date.now();
 const accounts: Account[] = [];
 const nodes: Node[] = [];
 
-const transactionsRollingWindow = new RollingWindow(
-  MAX_TRANSACTIONS_ROLLING_WINDOW_SIZE_MS,
-);
+const transactionsSemaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
+const transfersSemaphore = new Semaphore(MAX_CONCURRENT_TRANSFERS);
+
+const transactionsRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
 const failedTransactionsRollingWindow = new RollingWindow(
-  MAX_TRANSACTIONS_ROLLING_WINDOW_SIZE_MS,
+  MAX_ROLLING_WINDOW_SIZE_MS,
+);
+
+const transfersRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
+const failedTransfersRollingWindow = new RollingWindow(
+  MAX_ROLLING_WINDOW_SIZE_MS,
 );
 
 const blocksRollingWindow = new RollingWindow(
@@ -142,6 +154,53 @@ const queryBlockHeight = async (klyraClient: Klyra) => {
   }
 };
 
+const transferTDai = async () => {
+  const node = getRandomNode()!;
+  const klyraClient = node.klyraClient!;
+
+  let senderAccounts = accounts.filter(
+    (account) => account.tDaiBalance.amount >= TARGET_ACCOUNT_BALANCE,
+  );
+  senderAccounts = senderAccounts.filter(
+    (account) => account.lastBlockTransacted < lastBlockHeight,
+  );
+  senderAccounts.sort((a, b) => b.tDaiBalance.amount - a.tDaiBalance.amount);
+
+  if (senderAccounts.length === 0) {
+    // No accounts have enough balance to transfer
+    return;
+  }
+
+  const receiverAccounts = accounts.filter(
+    (account) => account.tDaiBalance.amount <= MINIMUM_ACCOUNT_BALANCE,
+  );
+  receiverAccounts.sort((a, b) => a.tDaiBalance.amount - b.tDaiBalance.amount);
+
+  if (receiverAccounts.length === 0) {
+    // No accounts have low enough balance to receive
+    return;
+  }
+
+  const sender = senderAccounts[0]!;
+  const receiver = receiverAccounts[0]!;
+
+  const amount = Math.min(
+    sender.tDaiBalance.amount - MINIMUM_ACCOUNT_BALANCE,
+    TARGET_ACCOUNT_BALANCE,
+  );
+
+  try {
+    await sender.transferTDai(klyraClient, receiver.address, amount.toString());
+    transfersRollingWindow.record();
+
+    sender.lastBlockTransfered = lastBlockHeight;
+  } catch (error) {
+    failedTransfersRollingWindow.record();
+    console.error('Error while creating transfer!');
+    console.error(error);
+  }
+};
+
 // TODO: This is just a test function to send trasnactions
 const executeOrder = async () => {
   const node = getRandomNode()!;
@@ -154,7 +213,7 @@ const executeOrder = async () => {
     const transactionA = await klyraClient.placeCustomOrder({
       subaccount: subaccountA,
       ticker: 'BTC-USD',
-      type: OrderType.MARKET, // TODO: This was a limit order!
+      type: OrderType.LIMIT, // TODO: This was a limit order!
       side: OrderSide.SELL,
       price: 100000,
       size: 0.0001,
@@ -171,7 +230,7 @@ const executeOrder = async () => {
       ticker: 'BTC-USD',
       type: OrderType.MARKET,
       side: OrderSide.BUY,
-      price: 200000,
+      price: 100001,
       size: 0.0001,
       clientId: randomIntFromInterval(0, 100000000),
       timeInForce: OrderTimeInForce.GTT,
@@ -182,19 +241,19 @@ const executeOrder = async () => {
     transactionsRollingWindow.record();
 
     const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
-    // console.log(
-    //   `Transaction A sent with hash [${parsedHashA}] for account [${
-    //     accounts[0]!.name
-    //   }]`,
-    // );
+    console.log(
+      `Transaction A sent with hash [${parsedHashA}] for account [${
+        accounts[0]!.name
+      }]`,
+    );
     // console.log(transactionA);
 
     const parsedHashB = Buffer.from(transactionB.hash).toString('hex');
-    // console.log(
-    //   `Transaction B sent with hash [${parsedHashB}] for account [${
-    //     accounts[1]!.name
-    //   }]`,
-    // );
+    console.log(
+      `Transaction B sent with hash [${parsedHashB}] for account [${
+        accounts[1]!.name
+      }]`,
+    );
     // console.log(transactionB);
   } catch (error) {
     failedTransactionsRollingWindow.record();
@@ -249,19 +308,26 @@ const main = async () => {
     );
   }
 
-  const semaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
-
   const loop = async () => {
-    if (semaphore.getAvailablePermits() > 0) {
-      semaphore.acquire();
+    // Transactions
+    if (transactionsSemaphore.getAvailablePermits() > 0) {
+      transactionsSemaphore.acquire();
 
       executeOrder().then(() => {
-        semaphore.release();
+        transactionsSemaphore.release();
       });
     }
 
-    // await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to other tasks
+    // Transfers
+    // if (transfersSemaphore.getAvailablePermits() > 0) {
+    //   transfersSemaphore.acquire();
 
+    //   transferTDai().then(() => {
+    //     transfersSemaphore.release();
+    //   });
+    // }
+
+    // Query block height
     if (lastBlockHeightQuery + BLOCK_QUERY_INTERVAL_MS < Date.now()) {
       const node = getRandomNode()!;
       const klyraClient = node.klyraClient!;
@@ -269,6 +335,7 @@ const main = async () => {
       queryBlockHeight(klyraClient);
     }
 
+    // Stats log
     if (lastStatsLog + STATS_LOG_INTERVAL_MS < Date.now()) {
       console.log(
         `[${formatTime(
@@ -291,6 +358,24 @@ const main = async () => {
       console.log(
         `[${formatTime(
           (Date.now() - startTime) / 1000,
+        )}] Transfer stats (successful/failed): 1s [${formatNumber(
+          transfersRollingWindow.getCount(1000),
+        )}/${formatNumber(
+          failedTransfersRollingWindow.getCount(1000),
+        )}] | 1m [${formatNumber(
+          transfersRollingWindow.getCount(1000 * 60),
+        )}/${formatNumber(
+          failedTransfersRollingWindow.getCount(1000 * 60),
+        )}] | 5m [${formatNumber(
+          transfersRollingWindow.getCount(1000 * 60 * 5),
+        )}/${formatNumber(
+          failedTransfersRollingWindow.getCount(1000 * 60 * 5),
+        )}]`,
+      );
+
+      console.log(
+        `[${formatTime(
+          (Date.now() - startTime) / 1000,
         )}] Block stats: 1s [${formatNumber(
           blocksRollingWindow.getCount(1000),
         )}] | 1m [${formatNumber(
@@ -304,29 +389,9 @@ const main = async () => {
     }
 
     setImmediate(loop);
-  }
+  };
 
   loop();
-
-  // while (true) {
-  //   const start = performance.now();
-
-  //   const node = getRandomNode()!;
-  //   const klyraClient = node.klyraClient!;
-
-  //   const blockHeight = await klyraClient
-  //     .getChainClient()
-  //     .nodeClient.get.latestBlockHeight();
-
-  //   const end = performance.now();
-  //   const elapsed = end - start;
-
-  //   console.log(
-  //     `[${new Date().toISOString()}] Block height is [${blockHeight}], request took [${elapsed.toFixed(
-  //       3,
-  //     )}ms]`,
-  //   );
-  // }
 };
 
 main();
