@@ -28,6 +28,7 @@ import {
   MAX_CONCURRENT_TRANSACTIONS,
   MAX_ROLLING_WINDOW_SIZE_MS,
   SEND_STATS_MESSAGE_INTERVAL_MS,
+  TRANSACTION_LOOP_DELAY_MS,
 } from './constants/constants';
 
 // State
@@ -214,7 +215,7 @@ const main = async () => {
           transactionsSemaphore.release();
         });
 
-      await delay(0); // Allow the event loop to jump to I/O tasks
+      await delay(TRANSACTION_LOOP_DELAY_MS); // Allow the event loop to jump to I/O tasks
     } else {
       await delay(5); // Don't cook CPU while waiting
     }

@@ -9,8 +9,8 @@ export const GENERATED_ACCOUNTS = 1640; // Number of accounts to generate (max n
 export const MINIMUM_ACCOUNT_BALANCE = 1000000; // Minimum balance for each account (account will be topped up if balance falls below this amount)
 
 // Transactions
-export const MAX_CONCURRENT_TRANSACTIONS = 10; // Max number of transactions that can be sent concurrently (per worker)
-const TRANSACTION_LOOP_DELAY_MS = 1; // Delay between transaction loops (allows the event loop to run I/O operations)
+export const MAX_CONCURRENT_TRANSACTIONS = 15; // Max number of transactions that can be sent concurrently (per worker)
+export const TRANSACTION_LOOP_DELAY_MS = 1; // Delay between transaction loops (allows the event loop to run I/O operations)
 
 // Transfers
 export const MAX_CONCURRENT_TRANSFERS = 10; // Max number of transfers that can be sent concurrently (per worker)
