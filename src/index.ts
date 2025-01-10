@@ -1,122 +1,17 @@
-import { performance } from 'node:perf_hooks';
-import {
-  OrderExecution,
-  OrderSide,
-  OrderTimeInForce,
-  OrderType,
-  Klyra,
-  WalletSubaccountInfo,
-} from '@klyra/core';
-
-// Interfaces
-import { NodeConfig } from './interfaces/node-config.interface';
-
-// Classes
+import { spawnWorkers } from './parent';
+import { createKlyraClient, getRandomNode } from './utils/utils';
 import { Account } from './class/account';
 import { Node } from './class/node';
-import { Semaphore } from './class/semaphore';
-
-// Config
+import { GENERATED_ACCOUNTS } from './constants/constants';
 import { validatorAccountConfigs } from './config/validator-accounts.config';
 import { nodeConfigs } from './config/nodes.config';
 import { uuidConfigs } from './config/uuids.config';
-import { RollingWindow } from './class/rolling-window';
-import { SlowBuffer } from 'node:buffer';
-import {
-  createKlyraClient,
-  formatNumber,
-  formatTime,
-  getRandomNode,
-  randomIntFromInterval,
-} from './utils/utils';
-import { spawnWorkers } from './parent';
 
-// Constants
-const MINUTE = 1000 * 60;
-const HOUR = MINUTE * 60;
-const DAY = HOUR * 24;
-
-const GENERATED_ACCOUNTS = 1640;
-const MAX_CONCURRENT_TRANSACTIONS = 10;
-const MAX_CONCURRENT_TRANSFERS = 10;
-// const TRANSACTION_LOOP_DELAY_MS = 1; // TODO: Is there anything smaller than 1ms that allows the event loop to jump to other tasks?
-const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
-const STATS_LOG_INTERVAL_MS = 1000; // 1 second
-const BLOCK_QUERY_INTERVAL_MS = 25; // 25 milliseconds
-const MINIMUM_ACCOUNT_BALANCE = 1000000; // 1,000,000 tDai
-
-// Global State
-const startTime = Date.now();
+// State
 const accounts: Account[] = [];
 const nodes: Node[] = [];
 
-const transactionsSemaphore = new Semaphore(MAX_CONCURRENT_TRANSACTIONS);
-const transfersSemaphore = new Semaphore(MAX_CONCURRENT_TRANSFERS);
-
-const failedTransactionsRollingWindow = new RollingWindow(
-  MAX_ROLLING_WINDOW_SIZE_MS,
-);
-
-const transfersRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
-const failedTransfersRollingWindow = new RollingWindow(
-  MAX_ROLLING_WINDOW_SIZE_MS,
-);
-
-const blocksRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
-
-let lastBlockHeightQuery = 0;
-let lastBlockHeight = 0;
-
-let lastStatsLog = 0;
-
-// Functions
-// const transferTDai = async (klyraClient: Klyra) => {
-//   let senderAccounts = accounts.filter(
-//     (account) => account.tDaiBalance.amount >= MINIMUM_ACCOUNT_BALANCE * 5, // TODO: Remove the 5x!
-//   );
-//   senderAccounts = senderAccounts.filter(
-//     (account) => account.lastBlockTransacted < lastBlockHeight,
-//   );
-//   senderAccounts.sort((a, b) => b.tDaiBalance.amount - a.tDaiBalance.amount);
-
-//   if (senderAccounts.length === 0) {
-//     // No accounts have enough balance to transfer
-//     return;
-//   }
-
-//   const receiverAccounts = accounts.filter(
-//     (account) => account.tDaiBalance.amount <= MINIMUM_ACCOUNT_BALANCE,
-//   );
-//   receiverAccounts.sort((a, b) => a.tDaiBalance.amount - b.tDaiBalance.amount);
-
-//   if (receiverAccounts.length === 0) {
-//     // No accounts have low enough balance to receive
-//     return;
-//   }
-
-//   const sender = senderAccounts[0]!;
-//   const receiver = receiverAccounts[0]!;
-
-//   const amount = Math.min(
-//     sender.tDaiBalance.amount - MINIMUM_ACCOUNT_BALANCE,
-//     MINIMUM_ACCOUNT_BALANCE,
-//   );
-
-//   try {
-//     await sender.transferTDai(klyraClient, receiver.address, amount.toString());
-//     transfersRollingWindow.record();
-
-//     sender.tDaiBalance.subtractAmount(amount);
-//     receiver.tDaiBalance.addAmount(amount);
-
-//     sender.lastBlockTransfered = lastBlockHeight;
-//   } catch (error) {
-//     failedTransfersRollingWindow.record();
-//     console.error('Error while creating transfer!');
-//     console.error(error);
-//   }
-// };
-
+// Main
 const main = async () => {
   // Setup nodes
   for (const nodeConfig of nodeConfigs) {
@@ -148,7 +43,7 @@ const main = async () => {
   }
 
   // Setup generated accounts
-  // for (let i = 1395; i < uuidConfigs.length; i++) {
+  // for (let i = 0; i < GENERATED_ACCOUNTS; i++) {
   //   const node = getRandomNode(nodes)!;
   //   const klyraClient = node.klyraClient!;
 

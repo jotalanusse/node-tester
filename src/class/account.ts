@@ -16,21 +16,15 @@ const toBigInt = (u: Uint8Array): bigint => {
   return negated ? -abs : abs;
 };
 
-class BlockOperation {
-  height: number;
-  timestamp: Date;
+class State {
+  timesTransacted: number;
+  isTransacting: boolean;
+  lastTransactionTime: Date;
 
   constructor() {
-    this.height = 0;
-    this.timestamp = new Date();
-  }
-
-  setHeight(height: number) {
-    this.height = height;
-  }
-
-  setTimestamp(timestamp: Date) {
-    this.timestamp = timestamp;
+    this.timesTransacted = 0;
+    this.isTransacting = false;
+    this.lastTransactionTime = new Date();
   }
 }
 
@@ -59,16 +53,14 @@ export class Account {
   readonly address: string;
   readonly wallet: LocalWallet;
   readonly tDaiBalance: Balance;
-  lastBlockTransfered: BlockOperation;
-  lastBlockTransacted: BlockOperation;
+  readonly state: State;
 
   constructor(name: string, address: string, wallet: LocalWallet) {
     this.name = name;
     this.address = address;
     this.wallet = wallet;
     this.tDaiBalance = new Balance(0);
-    this.lastBlockTransfered = new BlockOperation();
-    this.lastBlockTransacted = new BlockOperation();
+    this.state = new State();
   }
 
   async updateTDaiBalanceFromNode(klyraClient: Klyra) {

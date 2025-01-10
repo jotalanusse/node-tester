@@ -1,18 +1,16 @@
 import os from 'os';
 import { Worker } from 'worker_threads';
+import { formatNumber, formatTime } from './utils/utils';
+import { RollingWindow } from './class/rolling-window';
 import { WorkerData } from './interfaces/worker-data.interface';
 import { NodeConfig } from './interfaces/node-config.interface';
-import { formatNumber, formatTime } from './utils/utils';
+import { MAX_ROLLING_WINDOW_SIZE_MS } from './constants/constants';
 import {
   LogMessage,
   MessageType,
   MessageWrapper,
   StatsMessage,
 } from './messages/messages';
-import { RollingWindow } from './class/rolling-window';
-
-// Constants
-const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
 
 // State
 const transactionsRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);

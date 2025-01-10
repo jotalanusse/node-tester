@@ -24,12 +24,11 @@ import {
   MessageWrapper,
   StatsMessage,
 } from './messages/messages';
-import { send } from 'process';
-
-// Constants
-const MAX_CONCURRENT_TRANSACTIONS = 100;
-const MAX_ROLLING_WINDOW_SIZE_MS = 1000 * 60 * 60; // 1 hour
-const STATS_MESSAGE_INTERVAL_MS = 500; // 10 second
+import {
+  MAX_CONCURRENT_TRANSACTIONS,
+  MAX_ROLLING_WINDOW_SIZE_MS,
+  SEND_STATS_MESSAGE_INTERVAL_MS,
+} from './constants/constants';
 
 // State
 const { id, nodeConfigs, uuidConfigs } = workerData as WorkerData;
@@ -42,6 +41,8 @@ const transactionsRollingWindow = new RollingWindow(MAX_ROLLING_WINDOW_SIZE_MS);
 const failedTransactionsRollingWindow = new RollingWindow(
   MAX_ROLLING_WINDOW_SIZE_MS,
 );
+
+let lastStatsMessageSent = Date.now();
 
 // Functions
 const sendMessage = (message: Message) => {
@@ -71,26 +72,40 @@ const sendStatsMessage = () => {
   sendMessage(statsMessage);
 };
 
-// TODO: This is just a test function to send trasnactions
 const executeOrder = async () => {
   const node = getRandomNode(nodes)!;
   const klyraClient = node.klyraClient!;
 
-  accounts.sort(
-    (a, b) =>
-      a.lastBlockTransfered.timestamp.getTime() -
-      b.lastBlockTransfered.timestamp.getTime(),
+  const notTransactingAccounts = accounts.filter(
+    ({ state }) => !state.isTransacting,
   );
 
-  const accountA = accounts[0]!;
-  const accountB = accounts[1]!;
+  if (notTransactingAccounts.length < 2) {
+    // There are not enough accounts to transact
+    return;
+  }
 
-  console.log(`Account A has not been used for [${Date.now() - accountA.lastBlockTransfered.timestamp.getTime()}] ms`);
+  // Prefer the accounts that haven't transacted for the longest time
+  notTransactingAccounts.sort(
+    (a, b) =>
+      a.state.lastTransactionTime.getTime() -
+      b.state.lastTransactionTime.getTime(),
+  );
+
+  const accountA = notTransactingAccounts[0]!;
+  const accountB = notTransactingAccounts[1]!;
 
   const subaccountA = new WalletSubaccountInfo(accountA.wallet, 0);
   const subaccountB = new WalletSubaccountInfo(accountB.wallet, 0);
 
+  accountA.state.isTransacting = true;
+  accountB.state.isTransacting = true;
+
   try {
+    const blockHeight = await klyraClient
+      .getChainClient()
+      .nodeClient.get.latestBlockHeight();
+
     const transactionA = await klyraClient.placeCustomOrder({
       subaccount: subaccountA,
       ticker: 'BTC-USD',
@@ -101,10 +116,12 @@ const executeOrder = async () => {
       clientId: randomIntFromInterval(0, 100000000),
       timeInForce: OrderTimeInForce.GTT,
       goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
+      goodTilBlock: blockHeight + 20,
       execution: OrderExecution.DEFAULT,
       postOnly: true,
     });
-    accountA.lastBlockTransfered.setTimestamp(new Date());
+    accountA.state.timesTransacted++;
+    accountA.state.lastTransactionTime = new Date();
     transactionsRollingWindow.record();
 
     const transactionB = await klyraClient.placeCustomOrder({
@@ -117,10 +134,12 @@ const executeOrder = async () => {
       clientId: randomIntFromInterval(0, 100000000),
       timeInForce: OrderTimeInForce.GTT,
       goodTilTimeInSeconds: 1000 * 60 * 5, // TODO: ???
+      goodTilBlock: blockHeight + 20,
       execution: OrderExecution.DEFAULT,
       postOnly: true,
     });
-    accountB.lastBlockTransfered.setTimestamp(new Date());
+    accountB.state.timesTransacted++;
+    accountB.state.lastTransactionTime = new Date();
     transactionsRollingWindow.record();
 
     // const parsedHashA = Buffer.from(transactionA.hash).toString('hex');
@@ -139,8 +158,10 @@ const executeOrder = async () => {
   } catch (error: any) {
     failedTransactionsRollingWindow.record();
 
-    // sendLogMessage(`Error in executeOrder: ${error.message}`);
-    // console.error(error);
+    console.error(error);
+  } finally {
+    accountA.state.isTransacting = false;
+    accountB.state.isTransacting = false;
   }
 };
 
@@ -178,8 +199,6 @@ const main = async () => {
     `Worker initialized transaction loop with [${accounts.length}] accounts`,
   );
 
-  let lastStatsMessageSent = Date.now();
-
   while (true) {
     if (transactionsSemaphore.getAvailablePermits() > 0) {
       transactionsSemaphore.acquire();
@@ -195,12 +214,12 @@ const main = async () => {
           transactionsSemaphore.release();
         });
 
-      await delay(0);
+      await delay(0); // Allow the event loop to jump to I/O tasks
     } else {
-      await delay(5);
+      await delay(5); // Don't cook CPU while waiting
     }
 
-    if (lastStatsMessageSent + STATS_MESSAGE_INTERVAL_MS < Date.now()) {
+    if (lastStatsMessageSent + SEND_STATS_MESSAGE_INTERVAL_MS < Date.now()) {
       sendStatsMessage();
       lastStatsMessageSent = Date.now();
     }
