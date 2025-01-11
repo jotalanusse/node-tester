@@ -7,6 +7,8 @@ export const DAY_MS = HOUR_MS * 24;
 // Accounts
 export const GENERATED_ACCOUNTS = 1640; // Number of accounts to generate (max number of accounts with available funds is 1640!)
 export const MINIMUM_ACCOUNT_BALANCE = 1000000; // Minimum balance for each account (account will be topped up if balance falls below this amount)
+export const CHECK_ACCOUNT_BALANCE_ON_START = false; // Check the account balance on start and top up if necessary
+export const UPDATE_ACCOUNT_BALANCE_ON_CREATE = true; // Update the account balance on create // TODO: Implement this
 
 // Transactions
 export const MAX_CONCURRENT_TRANSACTIONS = 15; // Max number of transactions that can be sent concurrently (per worker)

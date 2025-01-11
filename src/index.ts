@@ -2,7 +2,11 @@ import { spawnWorkers } from './parent';
 import { createKlyraClient, getRandomNode } from './utils/utils';
 import { Account } from './class/account';
 import { Node } from './class/node';
-import { GENERATED_ACCOUNTS } from './constants/constants';
+import {
+  CHECK_ACCOUNT_BALANCE_ON_START,
+  GENERATED_ACCOUNTS,
+  MINIMUM_ACCOUNT_BALANCE,
+} from './constants/constants';
 import { validatorAccountConfigs } from './config/validator-accounts.config';
 import { nodeConfigs } from './config/nodes.config';
 import { uuidConfigs } from './config/uuids.config';
@@ -43,31 +47,37 @@ const main = async () => {
   }
 
   // Setup generated accounts
-  // for (let i = 0; i < GENERATED_ACCOUNTS; i++) {
-  //   const node = getRandomNode(nodes)!;
-  //   const klyraClient = node.klyraClient!;
+  if (CHECK_ACCOUNT_BALANCE_ON_START) {
+    for (let i = 0; i < GENERATED_ACCOUNTS; i++) {
+      const node = getRandomNode(nodes)!;
+      const klyraClient = node.klyraClient!;
 
-  //   const uuid = uuidConfigs[i]!;
+      const uuid = uuidConfigs[i]!;
 
-  //   const account = await Account.fromUUID(klyraClient, uuid);
-  //   await account.updateTDaiBalanceFromNode(klyraClient);
+      const account = await Account.fromUUID(klyraClient, uuid);
+      await account.updateTDaiBalanceFromNode(klyraClient);
 
-  //   accounts.push(account);
-  //   console.log(
-  //     `Account number [${i}] with name [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
-  //   );
+      accounts.push(account);
+      console.log(
+        `Account number [${i}] with name [${account.name}] created with address [${account.address}] and tDai balance [${account.tDaiBalance.amount}]`,
+      );
 
-  //   if (account.tDaiBalance.amount < MINIMUM_ACCOUNT_BALANCE) {
-  //     const transferAmount =
-  //       MINIMUM_ACCOUNT_BALANCE - account.tDaiBalance.amount;
+      if (account.tDaiBalance.amount < MINIMUM_ACCOUNT_BALANCE) {
+        const transferAmount =
+          MINIMUM_ACCOUNT_BALANCE - account.tDaiBalance.amount;
 
-  //     await accounts[1]?.transferTDai(
-  //       klyraClient,
-  //       account.address,
-  //       transferAmount.toString(),
-  //     );
-  //   }
-  // }
+        console.log(
+          `Transferring [${transferAmount}] tDai to account [${account.name}] to reach minimum balance of [${MINIMUM_ACCOUNT_BALANCE}]`,
+        );
+
+        await accounts[1]?.transferTDai(
+          klyraClient,
+          account.address,
+          transferAmount.toString(),
+        );
+      }
+    }
+  }
 
   const slicedUuidConfigs = uuidConfigs.slice(0, GENERATED_ACCOUNTS);
   spawnWorkers(nodeConfigs, slicedUuidConfigs);
